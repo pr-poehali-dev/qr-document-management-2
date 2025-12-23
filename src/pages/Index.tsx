@@ -1,14 +1,31 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from 'react';
+import LoginScreen from '@/components/LoginScreen';
+import Dashboard from '@/components/Dashboard';
+
+type UserRole = 'client' | 'cashier' | 'head-cashier' | 'admin' | 'creator' | 'nikitovsky' | null;
+
+interface User {
+  role: UserRole;
+  name: string;
+  phone?: string;
+}
 
 const Index = () => {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4 color-black text-black">Добро пожаловать!</h1>
-        <p className="text-xl text-gray-600">тут будет отображаться ваш проект</p>
-      </div>
-    </div>
-  );
+  const [user, setUser] = useState<User | null>(null);
+
+  const handleLogin = (role: UserRole, name: string, phone?: string) => {
+    setUser({ role, name, phone });
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  return <Dashboard user={user} onLogout={handleLogout} />;
 };
 
 export default Index;
