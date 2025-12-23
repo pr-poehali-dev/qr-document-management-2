@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { toast } from '@/hooks/use-toast';
 import { findUserByName, getNikirovskyBlockTime, setNikirovskyBlock, clearNikirovskyBlock } from '@/utils/storage';
+import NumericKeyboard from '@/components/NumericKeyboard';
 import type { UserRole } from '@/types/users';
 
 interface LoginScreenProps {
@@ -39,6 +40,19 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
 
   const handleSelectRole = (type: 'nikitovsky' | 'standard') => {
     setStep(type);
+    setPassword('');
+  };
+
+  const handleKeyPress = (key: string) => {
+    setPassword(prev => prev + key);
+  };
+
+  const handleBackspace = () => {
+    setPassword(prev => prev.slice(0, -1));
+  };
+
+  const handleClear = () => {
+    setPassword('');
   };
 
   const handleNikitovskyLogin = () => {
@@ -282,7 +296,7 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
         <Card className="w-full max-w-md bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border-yellow-700 text-white animate-fade-in">
           <CardHeader className="text-center space-y-4">
             <Button
-              onClick={() => setStep('select')}
+              onClick={() => { setStep('select'); setPassword(''); }}
               variant="ghost"
               className="absolute top-4 left-4 text-zinc-400 hover:text-white"
             >
@@ -294,22 +308,23 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
               </div>
             </div>
             <CardTitle className="text-3xl font-bold text-white">Вход Никитовского</CardTitle>
-            <CardDescription className="text-zinc-400">Введите мастер-пароль</CardDescription>
+            <CardDescription className="text-zinc-400">Используйте экранную клавиатуру</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-zinc-300">Пароль</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Введите пароль"
-                className="bg-zinc-700 border-zinc-600 text-white placeholder:text-zinc-500"
-                onKeyDown={(e) => e.key === 'Enter' && handleNikitovskyLogin()}
-                disabled={!!(nikitovskyBlocked && Date.now() < nikitovskyBlocked)}
-              />
+              <Label className="text-zinc-300 text-center block">Пароль</Label>
+              <div className="bg-zinc-700 border-2 border-zinc-600 rounded-lg p-4 text-center">
+                <div className="text-4xl font-bold tracking-widest text-white min-h-[50px] flex items-center justify-center">
+                  {password ? '•'.repeat(password.length) : '- - - - - - - -'}
+                </div>
+              </div>
             </div>
+
+            <NumericKeyboard
+              onKeyPress={handleKeyPress}
+              onBackspace={handleBackspace}
+              onClear={handleClear}
+            />
 
             <Button
               onClick={handleNikitovskyLogin}
