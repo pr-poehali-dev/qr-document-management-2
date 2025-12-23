@@ -5,6 +5,8 @@ import MainPanel from './MainPanel';
 import ItemManagement from './ItemManagement';
 import ArchivePanel from './ArchivePanel';
 import ProfilePanel from './ProfilePanel';
+import UserManagement from './UserManagement';
+import SMSPanel from './SMSPanel';
 
 type UserRole = 'client' | 'cashier' | 'head-cashier' | 'admin' | 'creator' | 'nikitovsky' | null;
 
@@ -19,7 +21,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type ActiveTab = 'main' | 'profile' | 'management' | 'archive' | 'cashier' | 'admin';
+type ActiveTab = 'main' | 'profile' | 'management' | 'archive' | 'cashier' | 'admin' | 'users' | 'sms';
 
 const Dashboard = ({ user, onLogout }: DashboardProps) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('main');
@@ -37,6 +39,8 @@ const Dashboard = ({ user, onLogout }: DashboardProps) => {
   const canAccessArchive = ['admin', 'creator', 'nikitovsky'].includes(user.role || '');
   const canAccessCashier = ['cashier', 'head-cashier', 'admin', 'creator', 'nikitovsky'].includes(user.role || '');
   const canAccessAdmin = ['admin', 'creator', 'nikitovsky'].includes(user.role || '');
+  const canAccessUsers = ['nikitovsky'].includes(user.role || '');
+  const canAccessSMS = ['admin', 'creator', 'nikitovsky'].includes(user.role || '');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-orange-50">
@@ -144,6 +148,34 @@ const Dashboard = ({ user, onLogout }: DashboardProps) => {
                 <span>Администратор</span>
               </button>
             )}
+
+            {canAccessUsers && (
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`px-6 py-4 font-medium transition-all flex items-center space-x-2 ${
+                  activeTab === 'users'
+                    ? 'text-accent border-b-4 border-accent bg-orange-50'
+                    : 'text-gray-600 hover:text-accent hover:bg-gray-50'
+                }`}
+              >
+                <Icon name="Users" size={20} />
+                <span>Пользователи</span>
+              </button>
+            )}
+
+            {canAccessSMS && (
+              <button
+                onClick={() => setActiveTab('sms')}
+                className={`px-6 py-4 font-medium transition-all flex items-center space-x-2 ${
+                  activeTab === 'sms'
+                    ? 'text-primary border-b-4 border-primary bg-blue-50'
+                    : 'text-gray-600 hover:text-primary hover:bg-gray-50'
+                }`}
+              >
+                <Icon name="MessageSquare" size={20} />
+                <span>SMS</span>
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -168,6 +200,8 @@ const Dashboard = ({ user, onLogout }: DashboardProps) => {
               <p className="text-gray-600">Модуль администрирования в разработке</p>
             </div>
           )}
+          {activeTab === 'users' && canAccessUsers && <UserManagement user={user} />}
+          {activeTab === 'sms' && canAccessSMS && <SMSPanel userName={user.name} />}
         </div>
       </main>
     </div>

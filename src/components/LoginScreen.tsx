@@ -1,25 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 import { toast } from '@/hooks/use-toast';
-
-type UserRole = 'client' | 'cashier' | 'head-cashier' | 'admin' | 'creator' | 'nikitovsky';
+import { findUserByName, getNikirovskyBlockTime, setNikirovskyBlock, clearNikirovskyBlock } from '@/utils/storage';
+import type { UserRole } from '@/types/users';
 
 interface LoginScreenProps {
   onLogin: (role: UserRole, name: string, phone?: string) => void;
 }
 
 const LoginScreen = ({ onLogin }: LoginScreenProps) => {
-  const [selectedRole, setSelectedRole] = useState<UserRole | ''>('');
+  const [step, setStep] = useState<'select' | 'nikitovsky' | 'standard'>('select');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [nikitovskyBlocked, setNikitovskyBlocked] = useState<number | null>(null);
+  const [unblockPassword, setUnblockPassword] = useState('');
+  const [showUnblockInput, setShowUnblockInput] = useState(false);
+
+  useEffect(() => {
+    const blockTime = getNikirovskyBlockTime();
+    setNikitovskyBlocked(blockTime);
+  }, []);
 
   const rolePasswords: Record<UserRole, string> = {
     cashier: '25',
@@ -30,16 +37,46 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
     client: '',
   };
 
-  const roleNames: Record<UserRole, string> = {
-    client: 'Покупатель',
-    cashier: 'Кассир',
-    'head-cashier': 'Главный кассир',
-    admin: 'Администратор',
-    creator: 'Создатель',
-    nikitovsky: 'Никитовский',
+  const handleSelectRole = (type: 'nikitovsky' | 'standard') => {
+    setStep(type);
   };
 
-  const handleLogin = () => {
+  const handleNikitovskyLogin = () => {
+    if (nikitovskyBlocked && Date.now() < nikitovskyBlocked) {
+      const hoursLeft = Math.ceil((nikitovskyBlocked - Date.now()) / (1000 * 60 * 60));
+      toast({
+        title: '🔒 Доступ заблокирован',
+        description: `Вход в Никитовский заблокирован на ${hoursLeft} часа`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!password) {
+      toast({
+        title: 'Ошибка',
+        description: 'Введите пароль',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password === rolePasswords.nikitovsky) {
+      onLogin('nikitovsky', 'Никитовский');
+      toast({
+        title: '✅ Вход выполнен',
+        description: 'Добро пожаловать, Никитовский!',
+      });
+    } else {
+      toast({
+        title: '❌ Неверный пароль',
+        description: 'Доступ запрещен',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleStandardLogin = () => {
     if (lockedUntil && Date.now() < lockedUntil) {
       const secondsLeft = Math.ceil((lockedUntil - Date.now()) / 1000);
       toast({
@@ -50,43 +87,58 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
       return;
     }
 
-    if (!selectedRole) {
+    if (!name) {
       toast({
         title: 'Ошибка',
-        description: 'Выберите роль',
+        description: 'Введите имя',
         variant: 'destructive',
       });
       return;
     }
 
-    if (selectedRole === 'client') {
-      if (!name || !phone) {
+    const user = findUserByName(name);
+
+    if (!user) {
+      toast({
+        title: '❌ Пользователь не найден',
+        description: 'Данное имя не зарегистрировано в системе',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (user.role === 'client') {
+      if (!phone) {
         toast({
           title: 'Ошибка',
-          description: 'Введите имя и номер телефона',
+          description: 'Введите номер телефона',
           variant: 'destructive',
         });
         return;
       }
-      onLogin(selectedRole, name, phone);
+      onLogin(user.role, user.name, phone);
+      toast({
+        title: '✅ Вход выполнен',
+        description: `Добро пожаловать, ${user.name}!`,
+      });
       return;
     }
 
-    if (!name || !password) {
+    if (!password) {
       toast({
         title: 'Ошибка',
-        description: 'Введите имя и пароль',
+        description: 'Введите пароль',
         variant: 'destructive',
       });
       return;
     }
 
-    if (password === rolePasswords[selectedRole]) {
+    if (password === rolePasswords[user.role]) {
       setAttempts(0);
-      onLogin(selectedRole, name);
+      onLogin(user.role, user.name);
       toast({
         title: '✅ Вход выполнен',
-        description: `Добро пожаловать, ${roleNames[selectedRole]}!`,
+        description: `Добро пожаловать, ${user.name}!`,
       });
     } else {
       const newAttempts = attempts + 1;
@@ -112,51 +164,200 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
     }
   };
 
+  const handleBlockNikitovsky = () => {
+    setNikirovskyBlock();
+    const blockTime = getNikirovskyBlockTime();
+    setNikitovskyBlocked(blockTime);
+    toast({
+      title: '🔒 Блокировка активирована',
+      description: 'Вход в Никитовский заблокирован на 2 часа',
+      variant: 'destructive',
+    });
+  };
+
+  const handleUnblock = () => {
+    if (clearNikirovskyBlock(unblockPassword)) {
+      setNikitovskyBlocked(null);
+      setUnblockPassword('');
+      setShowUnblockInput(false);
+      toast({
+        title: '✅ Блокировка снята',
+        description: 'Доступ восстановлен',
+      });
+    } else {
+      toast({
+        title: '❌ Неверный пароль',
+        description: 'Пароль разблокировки неверен',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (step === 'select') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4">
+        <Card className="w-full max-w-2xl bg-zinc-800 border-zinc-700 text-white animate-fade-in">
+          <CardHeader className="text-center space-y-4">
+            <div className="flex justify-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-zinc-600 to-zinc-700 rounded-2xl flex items-center justify-center">
+                <Icon name="QrCode" size={40} className="text-white" />
+              </div>
+            </div>
+            <CardTitle className="text-3xl font-bold text-white">Система QR-документов</CardTitle>
+            <CardDescription className="text-zinc-400">Выберите тип входа</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Button
+                onClick={() => handleSelectRole('nikitovsky')}
+                className="h-32 flex flex-col items-center justify-center bg-gradient-to-br from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white"
+              >
+                <Icon name="Crown" size={40} className="mb-2" />
+                <span className="text-xl font-bold">Никитовский</span>
+                <span className="text-sm opacity-80">Главный администратор</span>
+              </Button>
+
+              <Button
+                onClick={() => handleSelectRole('standard')}
+                className="h-32 flex flex-col items-center justify-center bg-zinc-700 hover:bg-zinc-600 text-white"
+              >
+                <Icon name="Users" size={40} className="mb-2" />
+                <span className="text-xl font-bold">Стандартный вход</span>
+                <span className="text-sm opacity-80">Сотрудники и клиенты</span>
+              </Button>
+            </div>
+
+            <Button
+              onClick={handleBlockNikitovsky}
+              variant="outline"
+              className="w-full bg-red-900/20 border-red-700 text-red-400 hover:bg-red-900/40"
+            >
+              <Icon name="ShieldOff" className="mr-2" />
+              Заблокировать вход в Никитовский на 2 часа
+            </Button>
+
+            {nikitovskyBlocked && Date.now() < nikitovskyBlocked && (
+              <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
+                <p className="text-red-400 text-sm font-medium mb-2">
+                  🔒 Вход в Никитовский заблокирован
+                </p>
+                <p className="text-red-300 text-xs mb-3">
+                  Осталось: {Math.ceil((nikitovskyBlocked - Date.now()) / (1000 * 60))} минут
+                </p>
+                {!showUnblockInput ? (
+                  <Button
+                    onClick={() => setShowUnblockInput(true)}
+                    size="sm"
+                    variant="outline"
+                    className="border-red-600 text-red-400 hover:bg-red-900/20"
+                  >
+                    Снять блокировку (пароль: 2025)
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      value={unblockPassword}
+                      onChange={(e) => setUnblockPassword(e.target.value)}
+                      placeholder="Введите пароль"
+                      className="bg-zinc-700 border-zinc-600 text-white text-sm"
+                      onKeyDown={(e) => e.key === 'Enter' && handleUnblock()}
+                    />
+                    <Button onClick={handleUnblock} size="sm" className="bg-red-700 hover:bg-red-600">
+                      OK
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === 'nikitovsky') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4">
+        <Card className="w-full max-w-md bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border-yellow-700 text-white animate-fade-in">
+          <CardHeader className="text-center space-y-4">
+            <Button
+              onClick={() => setStep('select')}
+              variant="ghost"
+              className="absolute top-4 left-4 text-zinc-400 hover:text-white"
+            >
+              <Icon name="ArrowLeft" size={20} />
+            </Button>
+            <div className="flex justify-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-yellow-600 to-orange-600 rounded-2xl flex items-center justify-center">
+                <Icon name="Crown" size={40} className="text-white" />
+              </div>
+            </div>
+            <CardTitle className="text-3xl font-bold text-white">Вход Никитовского</CardTitle>
+            <CardDescription className="text-zinc-400">Введите мастер-пароль</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-zinc-300">Пароль</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Введите пароль"
+                className="bg-zinc-700 border-zinc-600 text-white placeholder:text-zinc-500"
+                onKeyDown={(e) => e.key === 'Enter' && handleNikitovskyLogin()}
+                disabled={!!(nikitovskyBlocked && Date.now() < nikitovskyBlocked)}
+              />
+            </div>
+
+            <Button
+              onClick={handleNikitovskyLogin}
+              disabled={!!(nikitovskyBlocked && Date.now() < nikitovskyBlocked)}
+              className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white font-medium py-6 text-lg"
+            >
+              <Icon name="LogIn" className="mr-2" />
+              Войти
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4">
       <Card className="w-full max-w-md bg-zinc-800 border-zinc-700 text-white animate-fade-in">
         <CardHeader className="text-center space-y-4">
+          <Button
+            onClick={() => setStep('select')}
+            variant="ghost"
+            className="absolute top-4 left-4 text-zinc-400 hover:text-white"
+          >
+            <Icon name="ArrowLeft" size={20} />
+          </Button>
           <div className="flex justify-center">
             <div className="w-20 h-20 bg-gradient-to-br from-zinc-600 to-zinc-700 rounded-2xl flex items-center justify-center">
-              <Icon name="QrCode" size={40} className="text-white" />
+              <Icon name="User" size={40} className="text-white" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold text-white">Система QR-документов</CardTitle>
-          <CardDescription className="text-zinc-400">Выберите роль для входа в систему</CardDescription>
+          <CardTitle className="text-3xl font-bold text-white">Стандартный вход</CardTitle>
+          <CardDescription className="text-zinc-400">Войдите с зарегистрированным именем</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="role" className="text-zinc-300">Роль</Label>
-            <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)}>
-              <SelectTrigger id="role" className="bg-zinc-700 border-zinc-600 text-white">
-                <SelectValue placeholder="Выберите роль" />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-700 border-zinc-600">
-                <SelectItem value="client" className="text-white hover:bg-zinc-600">👤 Покупатель</SelectItem>
-                <SelectItem value="cashier" className="text-white hover:bg-zinc-600">💼 Кассир</SelectItem>
-                <SelectItem value="head-cashier" className="text-white hover:bg-zinc-600">👔 Главный кассир</SelectItem>
-                <SelectItem value="admin" className="text-white hover:bg-zinc-600">⚙️ Администратор</SelectItem>
-                <SelectItem value="creator" className="text-white hover:bg-zinc-600">🔧 Создатель</SelectItem>
-                <SelectItem value="nikitovsky" className="text-white hover:bg-zinc-600">👑 Никитовский</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-zinc-300">
-              {selectedRole === 'client' ? 'Ваше имя' : 'Имя пользователя'}
-            </Label>
+            <Label htmlFor="name" className="text-zinc-300">Имя пользователя</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={selectedRole === 'client' ? 'Введите имя' : 'Введите имя'}
+              placeholder="Введите ваше имя"
               className="bg-zinc-700 border-zinc-600 text-white placeholder:text-zinc-500"
               disabled={!!lockedUntil && Date.now() < lockedUntil}
             />
           </div>
 
-          {selectedRole === 'client' ? (
+          {name && findUserByName(name)?.role === 'client' && (
             <div className="space-y-2">
               <Label htmlFor="phone" className="text-zinc-300">Номер телефона</Label>
               <Input
@@ -168,26 +369,26 @@ const LoginScreen = ({ onLogin }: LoginScreenProps) => {
                 disabled={!!lockedUntil && Date.now() < lockedUntil}
               />
             </div>
-          ) : (
-            selectedRole && (
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-zinc-300">Пароль</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Введите пароль"
-                  className="bg-zinc-700 border-zinc-600 text-white placeholder:text-zinc-500"
-                  disabled={!!lockedUntil && Date.now() < lockedUntil}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                />
-              </div>
-            )
+          )}
+
+          {name && findUserByName(name) && findUserByName(name)?.role !== 'client' && (
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-zinc-300">Пароль</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Введите пароль"
+                className="bg-zinc-700 border-zinc-600 text-white placeholder:text-zinc-500"
+                disabled={!!lockedUntil && Date.now() < lockedUntil}
+                onKeyDown={(e) => e.key === 'Enter' && handleStandardLogin()}
+              />
+            </div>
           )}
 
           <Button
-            onClick={handleLogin}
+            onClick={handleStandardLogin}
             disabled={!!lockedUntil && Date.now() < lockedUntil}
             className="w-full bg-zinc-600 hover:bg-zinc-500 text-white font-medium py-6 text-lg"
           >
